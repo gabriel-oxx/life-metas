@@ -8,6 +8,7 @@ import {
   Compass,
   RotateCcw,
   Trash2,
+  Calendar,
 } from 'lucide-react';
 import {
   Goal,
@@ -28,8 +29,12 @@ import {
   editSubtaskInTree,
   insertSubtaskInTree,
   updateSubtaskStatusInTree,
+  TaskDateFilter,
+  TASK_DATE_FILTER_LABELS,
+  isDateInPeriod,
 } from './utils/treeUtils';
 import { GoalCard } from './components/GoalCard';
+import { GoalDetailPanel } from './components/GoalDetailPanel';
 import { TaskItem } from './components/TaskItem';
 import { GoalFormModal } from './components/GoalFormModal';
 import { TaskFormModal } from './components/TaskFormModal';
@@ -37,6 +42,9 @@ import { DeleteGoalModal } from './components/DeleteGoalModal';
 
 const STORAGE_KEY_GOALS = 'trilha_goals_v1';
 const STORAGE_KEY_TASKS = 'trilha_tasks_v1';
+
+type ActiveView = 'objetivos' | 'tarefas' | 'metodo';
+type TaskFilterMode = 'objetivo' | 'data';
 
 export default function App() {
   // Estado principal com persistência local
@@ -74,32 +82,63 @@ export default function App() {
     }
   }, [tasks]);
 
+  // Navegação de telas
+  const [activeView, setActiveView] = useState<ActiveView>('objetivos');
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+
   // Filtros de Objetivos
-  const [goalStatusFilter, setGoalStatusFilter] = useState<GoalStatus | 'todos'>('todos');
-  const [goalCategoryFilter, setGoalCategoryFilter] = useState<GoalCategory | 'todas'>('todas');
+  const [goalStatusFilter, setGoalStatusFilter] = useState<
+    GoalStatus | 'todos'
+  >('todos');
+  const [goalCategoryFilter, setGoalCategoryFilter] = useState<
+    GoalCategory | 'todas'
+  >('todas');
   const [goalSearch, setGoalSearch] = useState('');
 
-  // Filtros de Tarefas
-  const [taskGoalFilter, setTaskGoalFilter] = useState<string>('todas'); // 'todas' | 'avulsas' | goal.id
-  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatus | 'todos'>('todos');
+  // Filtros da tela de Tarefas:
+  // A) Exibição por objetivo (seleciona um objetivo para exibir as tarefas dele)
+  // B) Exibição por data (hoje, essa semana, próximas 2 semanas)
+  const [taskFilterMode, setTaskFilterMode] =
+    useState<TaskFilterMode>('objetivo');
+  const [selectedGoalForTasks, setSelectedGoalForTasks] = useState<string>(
+    () => goals[0]?.id || ''
+  );
+  const [selectedDateFilter, setSelectedDateFilter] =
+    useState<TaskDateFilter>('essa_semana');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<
+    TaskStatus | 'todos'
+  >('todos');
+
+  // Mantém um objetivo válido selecionado no filtro por objetivo quando a lista de objetivos muda
+  useEffect(() => {
+    if (goals.length === 0) {
+      setSelectedGoalForTasks('');
+    } else if (!goals.some((g) => g.id === selectedGoalForTasks)) {
+      setSelectedGoalForTasks(goals[0].id);
+    }
+  }, [goals, selectedGoalForTasks]);
 
   // Modais
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
-  const [goalToDelete, setGoalToDelete] = useState<GoalWithProgress | null>(null);
+  const [goalToDelete, setGoalToDelete] = useState<GoalWithProgress | null>(
+    null
+  );
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [defaultGoalIdForNewTask, setDefaultGoalIdForNewTask] = useState<string | null>(null);
+  const [defaultGoalIdForNewTask, setDefaultGoalIdForNewTask] = useState<
+    string | null
+  >(null);
 
-  // Feedback sutil de gamificação
+  // Feedback de gamificação e ações anunciado para leitores de tela
   const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
 
   const triggerFeedback = (msg: string) => {
     setFeedbackBanner(msg);
     setTimeout(() => {
       setFeedbackBanner((prev) => (prev === msg ? null : prev));
-    }, 4000);
+    }, 4500);
   };
 
   // Cálculo reativo de progresso dos objetivos com base nas tarefas vinculadas concluídas
@@ -127,6 +166,36 @@ export default function App() {
     });
   }, [goals, tasks]);
 
+  const selectedGoal = useMemo(
+    () => goalsWithProgress.find((g) => g.id === selectedGoalId) || null,
+    [goalsWithProgress, selectedGoalId]
+  );
+
+  // Permite fechar o painel dedicado do objetivo com a tecla Escape quando nenhum modal está aberto
+  useEffect(() => {
+    if (
+      !selectedGoalId ||
+      isGoalModalOpen ||
+      isTaskModalOpen ||
+      Boolean(goalToDelete)
+    ) {
+      return;
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const previousId = selectedGoalId;
+        setSelectedGoalId(null);
+        setTimeout(() => {
+          document.getElementById(`goal-card-${previousId}`)?.focus();
+        }, 0);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedGoalId, isGoalModalOpen, isTaskModalOpen, goalToDelete]);
+
   // Pontuação Gamificada (XP Comportamental)
   const gamificationStats = useMemo(() => {
     let completedTasks = 0;
@@ -144,7 +213,6 @@ export default function App() {
       (g) => g.status === 'concluido' || g.progressPercent >= 100
     ).length;
 
-    // Cada subtarefa concluída = 15 XP | Cada tarefa concluída = 50 XP | Meta concluída = 200 XP
     const totalXp =
       completedSubtasks * 15 + completedTasks * 50 + completedGoals * 200;
     const level = Math.floor(totalXp / 250) + 1;
@@ -190,23 +258,27 @@ export default function App() {
     });
   }, [goalsWithProgress, goalStatusFilter, goalCategoryFilter, goalSearch]);
 
-  // Tarefas filtradas para o painel de tarefas
+  // Tarefas filtradas conforme A (Exibição por objetivo) ou B (Exibição por data)
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
-      if (taskGoalFilter === 'avulsas' && t.goalId !== null) return false;
-      if (
-        taskGoalFilter !== 'todas' &&
-        taskGoalFilter !== 'avulsas' &&
-        t.goalId !== taskGoalFilter
-      ) {
-        return false;
-      }
       if (taskStatusFilter !== 'todos' && t.status !== taskStatusFilter) {
         return false;
       }
-      return true;
+
+      if (taskFilterMode === 'objetivo') {
+        if (!selectedGoalForTasks) return false;
+        return t.goalId === selectedGoalForTasks;
+      } else {
+        return isDateInPeriod(t.dueDate, selectedDateFilter);
+      }
     });
-  }, [tasks, taskGoalFilter, taskStatusFilter]);
+  }, [
+    tasks,
+    taskFilterMode,
+    selectedGoalForTasks,
+    selectedDateFilter,
+    taskStatusFilter,
+  ]);
 
   // --- HANDLERS DE OBJETIVOS (CRUD) ---
 
@@ -226,8 +298,10 @@ export default function App() {
         createdAt: new Date().toISOString(),
       };
       setGoals((prev) => [newGoal, ...prev]);
+      setActiveView('objetivos');
+      setSelectedGoalId(newGoal.id);
       triggerFeedback(
-        `Novo objetivo "${newGoal.title}" adicionado! Vincule tarefas para avançar.`
+        `Novo objetivo "${newGoal.title}" criado! Adicione tarefas no painel do objetivo.`
       );
     }
   };
@@ -236,7 +310,9 @@ export default function App() {
     setGoals((prev) =>
       prev.map((g) => (g.id === goalId ? { ...g, status: newStatus } : g))
     );
-    triggerFeedback(`Status do objetivo alterado para ${GOAL_STATUS_LABELS[newStatus]}.`);
+    triggerFeedback(
+      `Status do objetivo alterado para ${GOAL_STATUS_LABELS[newStatus]}.`
+    );
   };
 
   const handleConfirmDeleteGoal = (
@@ -254,8 +330,8 @@ export default function App() {
       );
     }
 
-    if (taskGoalFilter === goalId) {
-      setTaskGoalFilter('todas');
+    if (selectedGoalId === goalId) {
+      setSelectedGoalId(null);
     }
 
     if (target) {
@@ -371,14 +447,12 @@ export default function App() {
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
-        // Se parentId é o próprio ID da tarefa raiz, adiciona no nível 0
         if (parentId === task.id) {
           return {
             ...task,
             subtasks: [...task.subtasks, newSubtask],
           };
         }
-        // Caso contrário, insere recursivamente na subtarefa pai
         return {
           ...task,
           subtasks: insertSubtaskInTree(task.subtasks, parentId, newSubtask),
@@ -444,532 +518,787 @@ export default function App() {
   const handleResetDemoData = () => {
     setGoals(INITIAL_GOALS);
     setTasks(INITIAL_TASKS);
+    setSelectedGoalId(null);
     setGoalStatusFilter('todos');
     setGoalCategoryFilter('todas');
     setGoalSearch('');
+    setSelectedGoalForTasks(INITIAL_GOALS[0]?.id || '');
     triggerFeedback('Exemplos iniciais restaurados com sucesso.');
   };
 
   const handleClearAllGoals = () => {
     setGoals([]);
+    setSelectedGoalId(null);
     setTasks((prev) => prev.map((t) => ({ ...t, goalId: null })));
-    triggerFeedback('Lista de objetivos limpa para visualização do estado vazio.');
+    triggerFeedback(
+      'Lista de objetivos limpa para visualização do estado vazio.'
+    );
+  };
+
+  const handleBackFromGoalDetail = () => {
+    const previousId = selectedGoalId;
+    setSelectedGoalId(null);
+    if (previousId) {
+      setTimeout(() => {
+        document.getElementById(`goal-card-${previousId}`)?.focus();
+      }, 0);
+    }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF9F5] text-stone-900">
-      {/* Top Bar Contract: 3 zonas separadas por gap-8 */}
+      {/* Skip Link para acessibilidade por teclado e leitores de tela */}
+      <a
+        href="#conteudo-principal"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-emerald-800 focus:text-white focus:rounded-xl focus:text-sm focus:font-medium focus:shadow-lg"
+      >
+        Pular para o conteúdo principal
+      </a>
+
+      {/* Região ARIA Live permanente para anunciar notificações e conquistas de XP */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="fixed bottom-5 right-5 z-40 pointer-events-none"
+      >
+        {feedbackBanner && (
+          <div className="pointer-events-auto max-w-sm bg-stone-900 text-stone-50 px-4 py-3 rounded-xl shadow-lg border border-stone-700 text-xs sm:text-sm flex items-center gap-2.5">
+            <Award
+              className="w-4 h-4 text-emerald-400 shrink-0"
+              aria-hidden="true"
+            />
+            <span>{feedbackBanner}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Top Bar sem botão "Trilha": apenas navegação principal e ação primária contextual */}
       <header className="sticky top-0 z-30 bg-[#FAF9F5]/95 backdrop-blur-sm border-b border-stone-200/80">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-4 sm:px-8 py-4">
-          {/* Zona 1: Brand Wordmark em linha única */}
-          <a
-            href="#topo"
-            className="text-lg font-bold tracking-tight text-stone-900 font-display whitespace-nowrap shrink-0"
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 px-4 sm:px-8 py-3.5">
+          {/* Navegação entre Telas */}
+          <nav
+            aria-label="Navegação principal"
+            className="flex items-center gap-1 p-1 bg-stone-200/60 rounded-xl"
           >
-            Trilha
-          </a>
-
-          {/* Zona 2: Links de navegação concisos em linha única */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-stone-600">
-            <a
-              href="#objetivos"
-              className="hover:text-stone-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              Objetivos
-            </a>
-            <a
-              href="#tarefas"
-              className="hover:text-stone-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              Tarefas e Subtarefas
-            </a>
-            <a
-              href="#metodo"
-              className="hover:text-stone-950 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              Método Comportamental
-            </a>
-          </nav>
-
-          {/* Zona 3: 1 Ação primária */}
-          <div className="flex items-center shrink-0">
             <button
               type="button"
+              aria-current={activeView === 'objetivos' ? 'page' : undefined}
               onClick={() => {
-                setEditingGoal(null);
-                setIsGoalModalOpen(true);
+                setActiveView('objetivos');
+                setSelectedGoalId(null);
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0"
+              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                activeView === 'objetivos'
+                  ? 'bg-white text-stone-900 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>Novo Objetivo</span>
+              Objetivos ({goals.length})
             </button>
-          </div>
-        </div>
-      </header>
 
-      {/* Notificação Flutuante de Recompensa / Feedback */}
-      {feedbackBanner && (
-        <div className="fixed bottom-5 right-5 z-40 max-w-sm bg-stone-900 text-stone-50 px-4 py-3 rounded-xl shadow-lg border border-stone-700 text-xs sm:text-sm flex items-center gap-2.5">
-          <Award className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{feedbackBanner}</span>
-        </div>
-      )}
+            <button
+              type="button"
+              aria-current={activeView === 'tarefas' ? 'page' : undefined}
+              onClick={() => {
+                setActiveView('tarefas');
+                setSelectedGoalId(null);
+              }}
+              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                activeView === 'tarefas'
+                  ? 'bg-white text-stone-900 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Tarefas ({tasks.length})
+            </button>
 
-      {/* Conteúdo Principal */}
-      <main id="topo" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 space-y-12">
-        {/* Painel de Boas-vindas e Gamificação Comportamental */}
-        <section className="bg-white border border-stone-200/90 rounded-2xl p-6 sm:p-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-7 space-y-2.5">
-              <p className="text-xs font-medium text-emerald-800">
-                Psicologia Comportamental Aplicada · Gestão Progressiva
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 tracking-tight">
-                Avance em objetivos complexos através de micro-etapas visíveis.
-              </h1>
-              <p className="text-sm text-stone-600 leading-relaxed max-w-2xl">
-                Decomponha metas de longo prazo — desde manter uma rotina semanal até
-                concluir uma graduação — em tarefas quantificáveis e múltiplos níveis de
-                subtarefas. Cada ação concluída alimenta imediatamente o progresso da sua
-                meta.
-              </p>
-            </div>
+            <button
+              type="button"
+              aria-current={activeView === 'metodo' ? 'page' : undefined}
+              onClick={() => {
+                setActiveView('metodo');
+                setSelectedGoalId(null);
+              }}
+              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                activeView === 'metodo'
+                  ? 'bg-white text-stone-900 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Método
+            </button>
+          </nav>
 
-            <div className="lg:col-span-5 bg-stone-50/90 border border-stone-200/80 rounded-xl p-5 space-y-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-xs text-stone-500 block">
-                    Nível de Consistência {gamificationStats.level}
-                  </span>
-                  <span className="text-base font-semibold text-stone-900">
-                    {gamificationStats.levelTitle}
-                  </span>
-                </div>
-                <div className="text-right font-mono-tabular">
-                  <span className="text-lg font-bold text-emerald-700">
-                    {gamificationStats.totalXp} XP
-                  </span>
-                  <span className="text-xs text-stone-500 block">
-                    {gamificationStats.xpInCurrentLevel}/{gamificationStats.xpToNextLevel} XP p/ próximo nível
-                  </span>
-                </div>
-              </div>
-
-              <div className="w-full h-2 bg-stone-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-600 rounded-full transition-transform duration-200 origin-left"
-                  style={{
-                    width: '100%',
-                    transform: `scaleX(${
-                      gamificationStats.xpInCurrentLevel /
-                      gamificationStats.xpToNextLevel
-                    })`,
-                  }}
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-stone-200/70 text-xs">
-                <div>
-                  <span className="text-stone-500 block">Metas ativas</span>
-                  <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
-                    {gamificationStats.activeGoalsCount}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-stone-500 block">Tarefas concluídas</span>
-                  <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
-                    {gamificationStats.completedTasks}/{tasks.length}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-stone-500 block">Subtarefas feitas</span>
-                  <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
-                    {gamificationStats.completedSubtasks}/{gamificationStats.totalSubtasks}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* SEÇÃO 1: OBJETIVOS (METAS) */}
-        <section id="objetivos" className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-stone-900">
-                Meus Objetivos
-              </h2>
-              <p className="text-sm text-stone-600 mt-0.5">
-                Acompanhe seus objetivos por unidade de medida, prazo e progresso acumulado.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {goals.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={handleClearAllGoals}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200/80 rounded-xl transition-colors whitespace-nowrap shrink-0"
-                  title="Remove todos os objetivos para testar a mensagem de lista vazia"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Simular lista vazia</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResetDemoData}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-700 hover:text-stone-900 bg-stone-200/70 hover:bg-stone-200 rounded-xl transition-colors whitespace-nowrap shrink-0"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Restaurar exemplos</span>
-                </button>
-              )}
-
+          {/* Ação primária contextual */}
+          <div className="flex items-center shrink-0">
+            {activeView === 'tarefas' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingTask(null);
+                  setDefaultGoalIdForNewTask(
+                    taskFilterMode === 'objetivo' && selectedGoalForTasks
+                      ? selectedGoalForTasks
+                      : null
+                  );
+                  setIsTaskModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
+              >
+                <Plus className="w-4 h-4" aria-hidden="true" />
+                <span>Nova Tarefa</span>
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={() => {
                   setEditingGoal(null);
                   setIsGoalModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
               >
-                <Plus className="w-4 h-4" />
-                <span>Adicionar Objetivo</span>
+                <Plus className="w-4 h-4" aria-hidden="true" />
+                <span>Novo Objetivo</span>
               </button>
-            </div>
+            )}
           </div>
+        </div>
+      </header>
 
-          {/* Barra de Filtros de Objetivos */}
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200/90">
-            {/* Filtro segmentado por Status */}
-            <div className="flex flex-wrap items-center gap-1 p-1 bg-stone-100 rounded-xl">
-              {(
-                ['todos', 'ativo', 'pausado', 'concluido', 'arquivado'] as const
-              ).map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => setGoalStatusFilter(st)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                    goalStatusFilter === st
-                      ? 'bg-white text-stone-900 shadow-xs'
-                      : 'text-stone-600 hover:text-stone-900'
-                  }`}
-                >
-                  {st === 'todos' ? 'Todos os status' : GOAL_STATUS_LABELS[st]}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-              {/* Filtro por Categoria */}
-              <select
-                aria-label="Filtrar por categoria"
-                value={goalCategoryFilter}
-                onChange={(e) =>
-                  setGoalCategoryFilter(e.target.value as GoalCategory | 'todas')
-                }
-                className="px-3 py-2 text-xs font-medium bg-stone-50 border border-stone-200 rounded-xl text-stone-700 focus:outline-none focus:border-emerald-600"
-              >
-                <option value="todas">Todas as categorias</option>
-                {(Object.keys(GOAL_CATEGORY_LABELS) as GoalCategory[]).map(
-                  (cat) => (
-                    <option key={cat} value={cat}>
-                      {GOAL_CATEGORY_LABELS[cat]}
-                    </option>
-                  )
-                )}
-              </select>
-
-              {/* Busca por título */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={goalSearch}
-                  onChange={(e) => setGoalSearch(e.target.value)}
-                  placeholder="Buscar objetivo..."
-                  className="w-full sm:w-56 pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:border-emerald-600"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Lista de Cartões ou Mensagens quando não houver objetivos */}
-          {goals.length === 0 ? (
-            <div className="bg-white border border-stone-200/90 rounded-2xl p-10 text-center max-w-2xl mx-auto my-4 space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
-                <Target className="w-6 h-6" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-lg font-semibold text-stone-900">
-                  Você ainda não possui objetivos cadastrados
-                </h3>
-                <p className="text-sm text-stone-600 leading-relaxed max-w-md mx-auto">
-                  Grandes conquistas começam com um alvo claro. Adicione seu primeiro
-                  objetivo — como estudar para uma graduação, planejar uma viagem ou
-                  organizar suas finanças — e divida-o em pequenas tarefas.
+      {/* Conteúdo Principal */}
+      <main
+        id="conteudo-principal"
+        tabIndex={-1}
+        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 space-y-8 focus:outline-none"
+      >
+        {/* Resumo compacto de Gamificação visível quando não está dentro do painel de detalhe de um objetivo */}
+        {!selectedGoal && (
+          <section
+            aria-label="Resumo de consistência e pontuação"
+            className="bg-white border border-stone-200/90 rounded-2xl p-5 sm:p-6"
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+              <div className="lg:col-span-7 space-y-1.5">
+                <p className="text-xs font-medium text-emerald-800">
+                  Psicologia Comportamental Aplicada · Gestão Progressiva
+                </p>
+                <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
+                  Avance em objetivos complexos através de micro-etapas visíveis.
+                </h1>
+                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed max-w-2xl">
+                  Selecione qualquer objetivo ou tarefa (com clique ou tecla
+                  Enter) para abrir seus controles internos sem poluição visual.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingGoal(null);
-                    setIsGoalModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0"
+
+              <div className="lg:col-span-5 bg-stone-50/90 border border-stone-200/80 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs text-stone-500 block">
+                      Nível de Consistência {gamificationStats.level}
+                    </span>
+                    <span className="text-sm sm:text-base font-semibold text-stone-900">
+                      {gamificationStats.levelTitle}
+                    </span>
+                  </div>
+                  <div className="text-right font-mono-tabular">
+                    <span className="text-base sm:text-lg font-bold text-emerald-700">
+                      {gamificationStats.totalXp} XP
+                    </span>
+                    <span className="text-xs text-stone-500 block">
+                      {gamificationStats.xpInCurrentLevel}/
+                      {gamificationStats.xpToNextLevel} XP p/ próximo nível
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  className="w-full h-2 bg-stone-200 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-label="Progresso de experiência para o próximo nível"
+                  aria-valuenow={gamificationStats.xpInCurrentLevel}
+                  aria-valuemin={0}
+                  aria-valuemax={gamificationStats.xpToNextLevel}
+                  aria-valuetext={`${gamificationStats.xpInCurrentLevel} de ${
+                    gamificationStats.xpToNextLevel
+                  } XP para alcançar o nível ${gamificationStats.level + 1}`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Criar meu primeiro objetivo</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetDemoData}
-                  className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors whitespace-nowrap shrink-0"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Carregar objetivos de exemplo</span>
-                </button>
+                  <div
+                    className="h-full bg-emerald-600 rounded-full transition-transform duration-200 origin-left"
+                    style={{
+                      width: '100%',
+                      transform: `scaleX(${
+                        gamificationStats.xpInCurrentLevel /
+                        gamificationStats.xpToNextLevel
+                      })`,
+                    }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-stone-200/70 text-xs">
+                  <div>
+                    <span className="text-stone-500 block">Metas ativas</span>
+                    <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
+                      {gamificationStats.activeGoalsCount}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-stone-500 block">
+                      Tarefas feitas
+                    </span>
+                    <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
+                      {gamificationStats.completedTasks}/{tasks.length}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-stone-500 block">
+                      Subtarefas feitas
+                    </span>
+                    <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
+                      {gamificationStats.completedSubtasks}/
+                      {gamificationStats.totalSubtasks}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
-          ) : filteredGoals.length === 0 ? (
-            <div className="bg-white border border-stone-200/90 rounded-2xl p-8 text-center space-y-3">
-              <p className="text-base font-medium text-stone-800">
-                Nenhum objetivo encontrado com os filtros selecionados.
-              </p>
-              <p className="text-xs text-stone-500">
-                Tente limpar a busca ou selecionar outra categoria ou status.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setGoalStatusFilter('todos');
-                  setGoalCategoryFilter('todas');
-                  setGoalSearch('');
+          </section>
+        )}
+
+        {/* TELA 1: OBJETIVOS (LISTA LIMPA OU PAINEL DEDICADO DO OBJETIVO SELECIONADO) */}
+        {activeView === 'objetivos' && (
+          <>
+            {selectedGoal ? (
+              <GoalDetailPanel
+                goal={selectedGoal}
+                linkedTasks={tasks.filter((t) => t.goalId === selectedGoal.id)}
+                onBack={handleBackFromGoalDetail}
+                onEditGoal={(g) => {
+                  setEditingGoal(g);
+                  setIsGoalModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors whitespace-nowrap shrink-0"
-              >
-                Limpar filtros de objetivos
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredGoals.map((goal) => (
-                <GoalCard
-                  key={goal.id}
-                  goal={goal}
-                  linkedTasks={tasks.filter((t) => t.goalId === goal.id)}
-                  onEditGoal={(g) => {
-                    setEditingGoal(g);
-                    setIsGoalModalOpen(true);
-                  }}
-                  onDeleteGoal={(g) => setGoalToDelete(g)}
-                  onChangeGoalStatus={handleChangeGoalStatus}
-                  onOpenNewTaskForGoal={(goalId) => {
-                    setEditingTask(null);
-                    setDefaultGoalIdForNewTask(goalId);
-                    setIsTaskModalOpen(true);
-                  }}
-                  onUpdateTaskStatus={handleUpdateTaskStatus}
-                  onEditTask={(t) => {
-                    setEditingTask(t);
-                    setDefaultGoalIdForNewTask(null);
-                    setIsTaskModalOpen(true);
-                  }}
-                  onDeleteTask={handleDeleteTask}
-                  onAddSubtask={handleAddSubtask}
-                  onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
-                  onEditSubtask={handleEditSubtask}
-                  onDeleteSubtask={handleDeleteSubtask}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* SEÇÃO 2: CENTRAL DE TAREFAS E SUBTAREFAS MULTINÍVEL */}
-        <section id="tarefas" className="space-y-6 pt-4 border-t border-stone-200/80">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-stone-900">
-                Tarefas e Subtarefas Aninhadas
-              </h2>
-              <p className="text-sm text-stone-600 mt-0.5">
-                Gerencie todas as tarefas vinculadas a metas ou tarefas avulsas do dia a dia,
-                com múltiplos níveis de subtarefas.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setEditingTask(null);
-                setDefaultGoalIdForNewTask(
-                  taskGoalFilter !== 'todas' && taskGoalFilter !== 'avulsas'
-                    ? taskGoalFilter
-                    : null
-                );
-                setIsTaskModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-medium text-stone-900 bg-white border border-stone-300 hover:bg-stone-50 rounded-xl transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4 text-emerald-700" />
-              <span>Nova Tarefa</span>
-            </button>
-          </div>
-
-          {/* Filtros de Tarefas */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200/90">
-            <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="filter-task-goal" className="text-xs font-medium text-stone-600">
-                Vínculo:
-              </label>
-              <select
-                id="filter-task-goal"
-                value={taskGoalFilter}
-                onChange={(e) => setTaskGoalFilter(e.target.value)}
-                className="px-3 py-1.5 text-xs font-medium bg-stone-50 border border-stone-200 rounded-xl text-stone-800 focus:outline-none focus:border-emerald-600"
-              >
-                <option value="todas">Todas as tarefas ({tasks.length})</option>
-                <option value="avulsas">
-                  Apenas tarefas avulsas (sem meta vinculada)
-                </option>
-                {goals.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    Meta: {g.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1 p-1 bg-stone-100 rounded-xl">
-              {(['todos', 'nao_iniciada', 'em_andamento', 'concluida'] as const).map(
-                (st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setTaskStatusFilter(st)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 ${
-                      taskStatusFilter === st
-                        ? 'bg-white text-stone-900 shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900'
-                    }`}
-                  >
-                    {st === 'todos' ? 'Todos os status' : TASK_STATUS_LABELS[st]}
-                  </button>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* Lista de Tarefas */}
-          {filteredTasks.length === 0 ? (
-            <div className="bg-white border border-stone-200/90 rounded-2xl p-8 text-center space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-stone-100 text-stone-600 flex items-center justify-center mx-auto">
-                <CheckSquare className="w-5 h-5" />
-              </div>
-              <p className="text-sm font-medium text-stone-800">
-                Nenhuma tarefa para exibir nesta visualização.
-              </p>
-              <p className="text-xs text-stone-500 max-w-md mx-auto">
-                Adicione uma nova tarefa vinculada a um objetivo ou crie uma tarefa avulsa
-                para organizar sua rotina.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
+                onDeleteGoal={(g) => setGoalToDelete(g)}
+                onChangeGoalStatus={handleChangeGoalStatus}
+                onOpenNewTaskForGoal={(goalId) => {
                   setEditingTask(null);
+                  setDefaultGoalIdForNewTask(goalId);
+                  setIsTaskModalOpen(true);
+                }}
+                onUpdateTaskStatus={handleUpdateTaskStatus}
+                onEditTask={(t) => {
+                  setEditingTask(t);
                   setDefaultGoalIdForNewTask(null);
                   setIsTaskModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0"
+                onDeleteTask={handleDeleteTask}
+                onAddSubtask={handleAddSubtask}
+                onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
+                onEditSubtask={handleEditSubtask}
+                onDeleteSubtask={handleDeleteSubtask}
+              />
+            ) : (
+              <section
+                id="objetivos"
+                aria-labelledby="heading-meus-objetivos"
+                className="space-y-6"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Criar Tarefa</span>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredTasks.map((task) => {
-                const linkedGoal =
-                  goals.find((g) => g.id === task.goalId) || null;
-                return (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    linkedGoal={linkedGoal}
-                    onUpdateTaskStatus={handleUpdateTaskStatus}
-                    onEditTask={(t) => {
-                      setEditingTask(t);
-                      setDefaultGoalIdForNewTask(null);
-                      setIsTaskModalOpen(true);
-                    }}
-                    onDeleteTask={handleDeleteTask}
-                    onAddSubtask={handleAddSubtask}
-                    onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
-                    onEditSubtask={handleEditSubtask}
-                    onDeleteSubtask={handleDeleteSubtask}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                  <div>
+                    <h2
+                      id="heading-meus-objetivos"
+                      className="text-xl sm:text-2xl font-bold text-stone-900"
+                    >
+                      Meus Objetivos
+                    </h2>
+                    <p className="text-sm text-stone-600 mt-0.5">
+                      Clique ou pressione Enter sobre qualquer objetivo para
+                      abrir seu painel de tarefas e ações.
+                    </p>
+                  </div>
 
-        {/* SEÇÃO 3: PILARES DO MÉTODO COMPORTAMENTAL */}
-        <section
-          id="metodo"
-          className="pt-4 border-t border-stone-200/80 grid grid-cols-1 md:grid-cols-3 gap-6"
-        >
-          <div className="bg-white border border-stone-200/90 rounded-2xl p-5 space-y-2">
-            <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
-              <Compass className="w-4 h-4 shrink-0" />
-              <span>01. Decomposição Cognitiva</span>
-            </div>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Dividir objetivos complexos em tarefas e múltiplos níveis de subtarefas
-              elimina a paralisia por análise. Cada subtarefa herda por padrão o prazo do
-              nível superior para manter o alinhamento temporal.
-            </p>
-          </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {goals.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={handleClearAllGoals}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200/80 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-600"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Simular lista vazia</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResetDemoData}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-700 hover:text-stone-900 bg-stone-200/70 hover:bg-stone-200 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-600"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Restaurar exemplos</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-          <div className="bg-white border border-stone-200/90 rounded-2xl p-5 space-y-2">
-            <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
-              <Target className="w-4 h-4 shrink-0" />
-              <span>02. Efeito do Gradiente de Meta</span>
-            </div>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Cada tarefa vinculada possui um valor padrão (minutos, páginas, moeda) que é
-              somado imediatamente ao objetivo quando concluída, tornando o esforço diário
-              visível e recompensador.
-            </p>
-          </div>
+                {/* Barra de Filtros de Objetivos */}
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200/90">
+                  <div
+                    role="group"
+                    aria-label="Filtrar objetivos por status"
+                    className="flex flex-wrap items-center gap-1 p-1 bg-stone-100 rounded-xl"
+                  >
+                    {(
+                      [
+                        'todos',
+                        'ativo',
+                        'pausado',
+                        'concluido',
+                        'arquivado',
+                      ] as const
+                    ).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        aria-pressed={goalStatusFilter === st}
+                        onClick={() => setGoalStatusFilter(st)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                          goalStatusFilter === st
+                            ? 'bg-white text-stone-900 shadow-xs'
+                            : 'text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        {st === 'todos'
+                          ? 'Todos os status'
+                          : GOAL_STATUS_LABELS[st]}
+                      </button>
+                    ))}
+                  </div>
 
-          <div className="bg-white border border-stone-200/90 rounded-2xl p-5 space-y-2">
-            <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
-              <Award className="w-4 h-4 shrink-0" />
-              <span>03. Flexibilidade de Rotina</span>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <label htmlFor="goal-category-filter" className="sr-only">
+                      Filtrar objetivos por categoria
+                    </label>
+                    <select
+                      id="goal-category-filter"
+                      value={goalCategoryFilter}
+                      onChange={(e) =>
+                        setGoalCategoryFilter(
+                          e.target.value as GoalCategory | 'todas'
+                        )
+                      }
+                      className="px-3 py-2 text-xs font-medium bg-stone-50 border border-stone-200 rounded-xl text-stone-700 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    >
+                      <option value="todas">Todas as categorias</option>
+                      {(Object.keys(GOAL_CATEGORY_LABELS) as GoalCategory[]).map(
+                        (cat) => (
+                          <option key={cat} value={cat}>
+                            {GOAL_CATEGORY_LABELS[cat]}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    <div className="relative">
+                      <label htmlFor="goal-search-input" className="sr-only">
+                        Buscar objetivo pelo título
+                      </label>
+                      <Search
+                        className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        id="goal-search-input"
+                        type="search"
+                        value={goalSearch}
+                        onChange={(e) => setGoalSearch(e.target.value)}
+                        placeholder="Buscar objetivo..."
+                        className="w-full sm:w-56 pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-700"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de Cartões Limpos */}
+                {goals.length === 0 ? (
+                  <div className="bg-white border border-stone-200/90 rounded-2xl p-10 text-center max-w-2xl mx-auto my-4 space-y-4">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
+                      <Target className="w-6 h-6" aria-hidden="true" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="text-lg font-semibold text-stone-900">
+                        Você ainda não possui objetivos cadastrados
+                      </h3>
+                      <p className="text-sm text-stone-600 leading-relaxed max-w-md mx-auto">
+                        Grandes conquistas começam com um alvo claro. Adicione
+                        seu primeiro objetivo — como estudar para uma graduação,
+                        planejar uma viagem ou organizar suas finanças — e
+                        divida-o em pequenas tarefas.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingGoal(null);
+                          setIsGoalModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                      >
+                        <Plus className="w-4 h-4" aria-hidden="true" />
+                        <span>Criar meu primeiro objetivo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetDemoData}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-600"
+                      >
+                        <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                        <span>Carregar objetivos de exemplo</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : filteredGoals.length === 0 ? (
+                  <div className="bg-white border border-stone-200/90 rounded-2xl p-8 text-center space-y-3">
+                    <p className="text-base font-medium text-stone-800">
+                      Nenhum objetivo encontrado com os filtros selecionados.
+                    </p>
+                    <p className="text-xs text-stone-500">
+                      Tente limpar a busca ou selecionar outra categoria ou
+                      status.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoalStatusFilter('todos');
+                        setGoalCategoryFilter('todas');
+                        setGoalSearch('');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                    >
+                      Limpar filtros de objetivos
+                    </button>
+                  </div>
+                ) : (
+                  <ul
+                    role="list"
+                    aria-label="Lista de objetivos"
+                    className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                  >
+                    {filteredGoals.map((goal) => (
+                      <li key={goal.id} className="flex flex-col">
+                        <GoalCard
+                          goal={goal}
+                          onSelectGoal={(id) => setSelectedGoalId(id)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+          </>
+        )}
+
+        {/* TELA 2: TAREFAS (EXIBIÇÃO POR OBJETIVO OU EXIBIÇÃO POR DATA) */}
+        {activeView === 'tarefas' && (
+          <section
+            id="tarefas"
+            aria-labelledby="heading-tarefas"
+            className="space-y-6"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div>
+                <h2
+                  id="heading-tarefas"
+                  className="text-xl sm:text-2xl font-bold text-stone-900"
+                >
+                  Minhas Tarefas
+                </h2>
+                <p className="text-sm text-stone-600 mt-0.5">
+                  Visualize suas tarefas filtrando por objetivo específico ou
+                  pelo prazo de vencimento. Clique ou pressione Enter em uma
+                  tarefa para abrir seus controles.
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Nem toda tarefa precisa pertencer a um grande projeto. Você pode gerenciar
-              tarefas avulsas do cotidiano no mesmo fluxo das tarefas vinculadas aos seus
-              objetivos principais.
-            </p>
-          </div>
-        </section>
+
+            {/* Painel de Exibição: A) Exibição por objetivo | B) Exibição por data */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/90 space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Seletor entre A (Por objetivo) e B (Por data) */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-stone-600">
+                    Modo de exibição:
+                  </span>
+                  <div
+                    role="group"
+                    aria-label="Escolher modo de exibição das tarefas"
+                    className="inline-flex items-center gap-1 p-1 bg-stone-100 rounded-xl"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={taskFilterMode === 'objetivo'}
+                      onClick={() => setTaskFilterMode('objetivo')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                        taskFilterMode === 'objetivo'
+                          ? 'bg-white text-stone-900 shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      <Target className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Exibição por objetivo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-pressed={taskFilterMode === 'data'}
+                      onClick={() => setTaskFilterMode('data')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                        taskFilterMode === 'data'
+                          ? 'bg-white text-stone-900 shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Exibição por data</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filtro de Status complementar */}
+                <div
+                  role="group"
+                  aria-label="Filtrar tarefas por status"
+                  className="flex flex-wrap items-center gap-1 p-1 bg-stone-100 rounded-xl self-start lg:self-auto"
+                >
+                  {(
+                    [
+                      'todos',
+                      'nao_iniciada',
+                      'em_andamento',
+                      'concluida',
+                    ] as const
+                  ).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      aria-pressed={taskStatusFilter === st}
+                      onClick={() => setTaskStatusFilter(st)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
+                        taskStatusFilter === st
+                          ? 'bg-white text-stone-900 shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      {st === 'todos'
+                        ? 'Todos os status'
+                        : TASK_STATUS_LABELS[st]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Controle específico do modo selecionado (A ou B) */}
+              <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center gap-3">
+                {taskFilterMode === 'objetivo' ? (
+                  <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                    <label
+                      htmlFor="select-goal-for-tasks"
+                      className="text-xs font-medium text-stone-700"
+                    >
+                      Selecionar objetivo:
+                    </label>
+                    {goals.length > 0 ? (
+                      <select
+                        id="select-goal-for-tasks"
+                        value={selectedGoalForTasks}
+                        onChange={(e) =>
+                          setSelectedGoalForTasks(e.target.value)
+                        }
+                        className="flex-1 sm:flex-initial px-3.5 py-2 text-xs sm:text-sm font-medium bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                      >
+                        {goals.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.title}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-stone-500">
+                        Nenhum objetivo cadastrado.
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                    <label
+                      htmlFor="select-date-for-tasks"
+                      className="text-xs font-medium text-stone-700"
+                    >
+                      Período de vencimento:
+                    </label>
+                    <select
+                      id="select-date-for-tasks"
+                      value={selectedDateFilter}
+                      onChange={(e) =>
+                        setSelectedDateFilter(e.target.value as TaskDateFilter)
+                      }
+                      className="px-3.5 py-2 text-xs sm:text-sm font-medium bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                    >
+                      {(
+                        [
+                          'hoje',
+                          'essa_semana',
+                          'proximas_2_semanas',
+                        ] as TaskDateFilter[]
+                      ).map((period) => (
+                        <option key={period} value={period}>
+                          {TASK_DATE_FILTER_LABELS[period]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Lista de Tarefas Enxutas */}
+            {filteredTasks.length === 0 ? (
+              <div className="bg-white border border-stone-200/90 rounded-2xl p-8 text-center space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-stone-100 text-stone-600 flex items-center justify-center mx-auto">
+                  <CheckSquare className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <p className="text-sm font-medium text-stone-800">
+                  Nenhuma tarefa encontrada para este filtro.
+                </p>
+                <p className="text-xs text-stone-500 max-w-md mx-auto">
+                  {taskFilterMode === 'objetivo'
+                    ? 'Adicione uma nova tarefa para este objetivo ou selecione outro objetivo acima.'
+                    : `Não há tarefas com vencimento para "${TASK_DATE_FILTER_LABELS[selectedDateFilter]}".`}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTask(null);
+                    setDefaultGoalIdForNewTask(
+                      taskFilterMode === 'objetivo' && selectedGoalForTasks
+                        ? selectedGoalForTasks
+                        : null
+                    );
+                    setIsTaskModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+                >
+                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Criar Nova Tarefa</span>
+                </button>
+              </div>
+            ) : (
+              <ul
+                role="list"
+                aria-label="Lista de tarefas"
+                className="space-y-2.5"
+              >
+                {filteredTasks.map((task) => {
+                  const linkedGoal =
+                    goals.find((g) => g.id === task.goalId) || null;
+                  return (
+                    <li key={task.id}>
+                      <TaskItem
+                        task={task}
+                        linkedGoal={linkedGoal}
+                        hideGoalName={taskFilterMode === 'objetivo'}
+                        onUpdateTaskStatus={handleUpdateTaskStatus}
+                        onEditTask={(t) => {
+                          setEditingTask(t);
+                          setDefaultGoalIdForNewTask(null);
+                          setIsTaskModalOpen(true);
+                        }}
+                        onDeleteTask={handleDeleteTask}
+                        onAddSubtask={handleAddSubtask}
+                        onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
+                        onEditSubtask={handleEditSubtask}
+                        onDeleteSubtask={handleDeleteSubtask}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {/* TELA 3: PILARES DO MÉTODO COMPORTAMENTAL */}
+        {activeView === 'metodo' && (
+          <section
+            id="metodo"
+            aria-labelledby="heading-metodo"
+            className="space-y-6"
+          >
+            <div>
+              <h2
+                id="heading-metodo"
+                className="text-xl sm:text-2xl font-bold text-stone-900"
+              >
+                Pilares do Método Comportamental
+              </h2>
+              <p className="text-sm text-stone-600 mt-0.5">
+                Como a estrutura progressiva reduz a sobrecarga cognitiva e
+                mantém a motivação.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white border border-stone-200/90 rounded-2xl p-6 space-y-2.5">
+                <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
+                  <Compass className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <h3>01. Decomposição Cognitiva</h3>
+                </div>
+                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                  Dividir objetivos complexos em tarefas e múltiplos níveis de
+                  subtarefas elimina a paralisia por análise. Cada subtarefa
+                  herda por padrão o prazo do nível superior para manter o
+                  alinhamento temporal.
+                </p>
+              </div>
+
+              <div className="bg-white border border-stone-200/90 rounded-2xl p-6 space-y-2.5">
+                <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
+                  <Target className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <h3>02. Efeito do Gradiente de Meta</h3>
+                </div>
+                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                  Cada tarefa vinculada possui um valor padrão (minutos,
+                  páginas, moeda) que é somado imediatamente ao objetivo quando
+                  concluída, tornando o esforço diário visível e recompensador.
+                </p>
+              </div>
+
+              <div className="bg-white border border-stone-200/90 rounded-2xl p-6 space-y-2.5">
+                <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
+                  <Award className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <h3>03. Foco Progressivo Sem Ruído</h3>
+                </div>
+                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                  Controles de edição, exclusão, mudança de status e subtarefas
+                  só aparecem quando você entra em um objetivo ou em uma tarefa,
+                  evitando poluição visual e facilitando a navegação por teclado
+                  e leitores de tela.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       <footer className="border-t border-stone-200/80 bg-white/60 py-6 px-4 sm:px-8 mt-12">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-stone-500">
-          <span>Trilha — Gerenciamento Progressivo de Metas e Tarefas</span>
+          <span>Gerenciamento Progressivo de Metas e Tarefas</span>
           <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={handleResetDemoData}
-              className="hover:text-stone-900 underline underline-offset-2 transition-colors"
+              className="hover:text-stone-900 underline underline-offset-2 transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
             >
               Restaurar dados de demonstração
             </button>

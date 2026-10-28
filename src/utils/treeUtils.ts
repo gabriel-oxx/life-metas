@@ -185,3 +185,49 @@ export function countSubtasksRecursive(subtasks: Subtask[]): {
 
   return { total, completed };
 }
+
+export type TaskDateFilter = 'hoje' | 'essa_semana' | 'proximas_2_semanas';
+
+export const TASK_DATE_FILTER_LABELS: Record<TaskDateFilter, string> = {
+  hoje: 'Hoje',
+  essa_semana: 'Essa semana',
+  proximas_2_semanas: 'Próximas 2 semanas',
+};
+
+/**
+ * Verifica se uma data YYYY-MM-DD pertence ao período selecionado em relação à data local atual.
+ */
+export function isDateInPeriod(
+  dateStr: string | null | undefined,
+  period: TaskDateFilter
+): boolean {
+  if (!dateStr) return false;
+  const clean = dateStr.split('T')[0];
+  const parts = clean.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return false;
+
+  const [year, month, day] = parts;
+  const taskDate = new Date(year, month - 1, day);
+  taskDate.setHours(0, 0, 0, 0);
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  today.setHours(0, 0, 0, 0);
+
+  const diffMs = taskDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (period === 'hoje') {
+    return diffDays === 0;
+  }
+
+  if (period === 'essa_semana') {
+    return diffDays >= 0 && diffDays <= 7;
+  }
+
+  if (period === 'proximas_2_semanas') {
+    return diffDays >= 0 && diffDays <= 14;
+  }
+
+  return false;
+}
