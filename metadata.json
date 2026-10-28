@@ -1,0 +1,6 @@
+{
+  "name": "Trilha — Gestão Progressiva de Metas",
+  "description": "Aplicativo de gerenciamento progressivo de metas baseado em psicologia comportamental, tarefas e subtarefas multinível com gamificação.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
