@@ -25,10 +25,6 @@ import {
 import { INITIAL_GOALS, INITIAL_TASKS } from './data/initialData';
 import { calculateGamificationStats } from './utils/gamificationUtils';
 import {
-  deleteSubtaskFromTree,
-  editSubtaskInTree,
-  insertSubtaskInTree,
-  updateSubtaskStatusInTree,
   TaskDateFilter,
   TASK_DATE_FILTER_LABELS,
   isDateInPeriod,
@@ -39,52 +35,35 @@ import { TaskItem } from './components/TaskItem';
 import { GoalFormModal } from './components/GoalFormModal';
 import { TaskFormModal } from './components/TaskFormModal';
 import { DeleteGoalModal } from './components/DeleteGoalModal';
-
-const STORAGE_KEY_GOALS = 'trilha_goals_v1';
-const STORAGE_KEY_TASKS = 'trilha_tasks_v1';
+import { NotificationProvider, useNotification } from './contexts/NotificationContext';
+import { TaskProvider, useTasks } from './contexts/TaskContext';
+import { GoalProvider, useGoals } from './contexts/GoalContext';
 
 type ActiveView = 'objetivos' | 'tarefas' | 'metodo';
 type TaskFilterMode = 'objetivo' | 'data';
 
-export default function App() {
-  // Estado principal com persistência local
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_GOALS);
-      return saved ? JSON.parse(saved) : INITIAL_GOALS;
-    } catch {
-      return INITIAL_GOALS;
-    }
-  });
-
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_TASKS);
-      return saved ? JSON.parse(saved) : INITIAL_TASKS;
-    } catch {
-      return INITIAL_TASKS;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(goals));
-    } catch {
-      // Ignora erro de quota
-    }
-  }, [goals]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks));
-    } catch {
-      // Ignora erro de quota
-    }
-  }, [tasks]);
+function AppContent() {
+  const { feedbackBanner, triggerFeedback } = useNotification();
+  const {
+    goals,
+    goalsWithProgress,
+    selectedGoalId,
+    selectedGoal,
+    setSelectedGoalId,
+    saveGoal,
+    deleteGoal,
+    resetGoals,
+    clearGoals,
+  } = useGoals();
+  const {
+    tasks,
+    saveTask,
+    resetTasks,
+    clearTasks,
+  } = useTasks();
 
   // Navegação de telas
   const [activeView, setActiveView] = useState<ActiveView>('objetivos');
-  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
 
   // Filtros de Objetivos
   const [goalStatusFilter, setGoalStatusFilter] = useState<
@@ -131,46 +110,6 @@ export default function App() {
     string | null
   >(null);
 
-  // Feedback de gamificação e ações anunciado para leitores de tela
-  const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
-
-  const triggerFeedback = (msg: string) => {
-    setFeedbackBanner(msg);
-    setTimeout(() => {
-      setFeedbackBanner((prev) => (prev === msg ? null : prev));
-    }, 4500);
-  };
-
-  // Cálculo reativo de progresso dos objetivos com base nas tarefas vinculadas concluídas
-  const goalsWithProgress: GoalWithProgress[] = useMemo(() => {
-    return goals.map((goal) => {
-      const linked = tasks.filter((t) => t.goalId === goal.id);
-      const completed = linked.filter((t) => t.status === 'concluida');
-      const currentValue = completed.reduce(
-        (acc, t) => acc + (Number(t.defaultValue) || 0),
-        0
-      );
-      const rawPercent =
-        goal.targetValue > 0
-          ? Math.round((currentValue / goal.targetValue) * 100)
-          : 0;
-      const progressPercent = Math.min(100, Math.max(0, rawPercent));
-
-      return {
-        ...goal,
-        currentValue,
-        progressPercent,
-        linkedTasksCount: linked.length,
-        completedTasksCount: completed.length,
-      };
-    });
-  }, [goals, tasks]);
-
-  const selectedGoal = useMemo(
-    () => goalsWithProgress.find((g) => g.id === selectedGoalId) || null,
-    [goalsWithProgress, selectedGoalId]
-  );
-
   // Permite fechar o painel dedicado do objetivo com a tecla Escape quando nenhum modal está aberto
   useEffect(() => {
     if (
@@ -194,7 +133,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedGoalId, isGoalModalOpen, isTaskModalOpen, goalToDelete]);
+  }, [selectedGoalId, isGoalModalOpen, isTaskModalOpen, goalToDelete, setSelectedGoalId]);
 
   // Pontuação Gamificada (XP Comportamental)
   const gamificationStats = useMemo(() => {
@@ -240,261 +179,6 @@ export default function App() {
     taskStatusFilter,
   ]);
 
-  // --- HANDLERS DE OBJETIVOS (CRUD) ---
-
-  const handleSaveGoal = (
-    goalData: Omit<Goal, 'id' | 'createdAt'>,
-    existingId?: string
-  ) => {
-    if (existingId) {
-      setGoals((prev) =>
-        prev.map((g) => (g.id === existingId ? { ...g, ...goalData } : g))
-      );
-      triggerFeedback(`Objetivo "${goalData.title}" atualizado com sucesso.`);
-    } else {
-      const newGoal: Goal = {
-        ...goalData,
-        id: `goal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        createdAt: new Date().toISOString(),
-      };
-      setGoals((prev) => [newGoal, ...prev]);
-      setActiveView('objetivos');
-      setSelectedGoalId(newGoal.id);
-      triggerFeedback(
-        `Novo objetivo "${newGoal.title}" criado! Adicione tarefas no painel do objetivo.`
-      );
-    }
-  };
-
-  const handleChangeGoalStatus = (goalId: string, newStatus: GoalStatus) => {
-    setGoals((prev) =>
-      prev.map((g) => (g.id === goalId ? { ...g, status: newStatus } : g))
-    );
-    triggerFeedback(
-      `Status do objetivo alterado para ${GOAL_STATUS_LABELS[newStatus]}.`
-    );
-  };
-
-  const handleConfirmDeleteGoal = (
-    goalId: string,
-    deleteLinkedTasks: boolean
-  ) => {
-    const target = goals.find((g) => g.id === goalId);
-    setGoals((prev) => prev.filter((g) => g.id !== goalId));
-
-    if (deleteLinkedTasks) {
-      setTasks((prev) => prev.filter((t) => t.goalId !== goalId));
-    } else {
-      setTasks((prev) =>
-        prev.map((t) => (t.goalId === goalId ? { ...t, goalId: null } : t))
-      );
-    }
-
-    if (selectedGoalId === goalId) {
-      setSelectedGoalId(null);
-    }
-
-    if (target) {
-      triggerFeedback(`Objetivo "${target.title}" removido.`);
-    }
-  };
-
-  // --- HANDLERS DE TAREFAS (CRUD + Gamificação) ---
-
-  const handleSaveTask = (
-    taskData: {
-      title: string;
-      goalId: string | null;
-      dueDate: string | null;
-      status: TaskStatus;
-      defaultValue: number;
-    },
-    existingTaskId?: string
-  ) => {
-    const nowIso = new Date().toISOString();
-
-    if (existingTaskId) {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id !== existingTaskId) return t;
-          const becameCompleted =
-            taskData.status === 'concluida' && t.status !== 'concluida';
-          const completedAt =
-            taskData.status === 'concluida'
-              ? becameCompleted
-                ? nowIso
-                : t.completedAt || nowIso
-              : null;
-
-          return {
-            ...t,
-            title: taskData.title,
-            goalId: taskData.goalId,
-            dueDate: taskData.dueDate,
-            status: taskData.status,
-            defaultValue: taskData.defaultValue,
-            completedAt,
-          };
-        })
-      );
-      triggerFeedback(`Tarefa "${taskData.title}" atualizada.`);
-    } else {
-      const newTask: Task = {
-        id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        goalId: taskData.goalId,
-        title: taskData.title,
-        dueDate: taskData.dueDate,
-        status: taskData.status,
-        completedAt: taskData.status === 'concluida' ? nowIso : null,
-        defaultValue: taskData.defaultValue,
-        subtasks: [],
-      };
-      setTasks((prev) => [newTask, ...prev]);
-      triggerFeedback(`Tarefa "${newTask.title}" criada.`);
-    }
-  };
-
-  const handleUpdateTaskStatus = (taskId: string, newStatus: TaskStatus) => {
-    const nowIso = new Date().toISOString();
-    const targetTask = tasks.find((t) => t.id === taskId);
-
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        return {
-          ...t,
-          status: newStatus,
-          completedAt: newStatus === 'concluida' ? nowIso : null,
-        };
-      })
-    );
-
-    if (targetTask && newStatus === 'concluida') {
-      const linkedGoal = goals.find((g) => g.id === targetTask.goalId);
-      if (linkedGoal && targetTask.defaultValue > 0) {
-        triggerFeedback(
-          `+50 XP! Tarefa concluída e progresso somado ao objetivo "${linkedGoal.title}".`
-        );
-      } else {
-        triggerFeedback(`+50 XP! Tarefa "${targetTask.title}" concluída.`);
-      }
-    }
-  };
-
-  const handleDeleteTask = (taskId: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-    triggerFeedback('Tarefa removida.');
-  };
-
-  // --- HANDLERS DE SUBTAREFAS MULTINÍVEL ---
-
-  const handleAddSubtask = (
-    taskId: string,
-    parentId: string,
-    title: string,
-    dueDate: string | null
-  ) => {
-    const newSubtask: Subtask = {
-      id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      parentId,
-      title,
-      dueDate,
-      status: 'nao_iniciada',
-      completedAt: null,
-      subtasks: [],
-    };
-
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== taskId) return task;
-        if (parentId === task.id) {
-          return {
-            ...task,
-            subtasks: [...task.subtasks, newSubtask],
-          };
-        }
-        return {
-          ...task,
-          subtasks: insertSubtaskInTree(task.subtasks, parentId, newSubtask),
-        };
-      })
-    );
-    triggerFeedback(`Subtarefa "${title}" adicionada.`);
-  };
-
-  const handleUpdateSubtaskStatus = (
-    taskId: string,
-    subtaskId: string,
-    newStatus: TaskStatus
-  ) => {
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== taskId) return task;
-        return {
-          ...task,
-          subtasks: updateSubtaskStatusInTree(
-            task.subtasks,
-            subtaskId,
-            newStatus
-          ),
-        };
-      })
-    );
-    if (newStatus === 'concluida') {
-      triggerFeedback('+15 XP! Subtarefa marcada como concluída.');
-    }
-  };
-
-  const handleEditSubtask = (
-    taskId: string,
-    subtaskId: string,
-    updates: { title: string; dueDate: string | null; status: TaskStatus }
-  ) => {
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== taskId) return task;
-        return {
-          ...task,
-          subtasks: editSubtaskInTree(task.subtasks, subtaskId, updates),
-        };
-      })
-    );
-    triggerFeedback('Subtarefa atualizada.');
-  };
-
-  const handleDeleteSubtask = (taskId: string, subtaskId: string) => {
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== taskId) return task;
-        return {
-          ...task,
-          subtasks: deleteSubtaskFromTree(task.subtasks, subtaskId),
-        };
-      })
-    );
-    triggerFeedback('Subtarefa excluída.');
-  };
-
-  const handleResetDemoData = () => {
-    setGoals(INITIAL_GOALS);
-    setTasks(INITIAL_TASKS);
-    setSelectedGoalId(null);
-    setGoalStatusFilter('todos');
-    setGoalCategoryFilter('todas');
-    setGoalSearch('');
-    setSelectedGoalForTasks(INITIAL_GOALS[0]?.id || '');
-    triggerFeedback('Exemplos iniciais restaurados com sucesso.');
-  };
-
-  const handleClearAllGoals = () => {
-    setGoals([]);
-    setSelectedGoalId(null);
-    setTasks((prev) => prev.map((t) => ({ ...t, goalId: null })));
-    triggerFeedback(
-      'Lista de objetivos limpa para visualização do estado vazio.'
-    );
-  };
-
   const handleBackFromGoalDetail = () => {
     setGoalToDelete(null);
     const previousId = selectedGoalId;
@@ -504,6 +188,25 @@ export default function App() {
         document.getElementById(`goal-card-${previousId}`)?.focus();
       }, 0);
     }
+  };
+
+  const handleResetDemoData = () => {
+    resetGoals();
+    resetTasks();
+    setSelectedGoalId(null);
+    setGoalStatusFilter('todos');
+    setGoalCategoryFilter('todas');
+    setGoalSearch('');
+    setSelectedGoalForTasks(INITIAL_GOALS[0]?.id || '');
+    triggerFeedback('Exemplos iniciais restaurados com sucesso.');
+  };
+
+  const handleClearAllGoals = () => {
+    clearGoals();
+    clearTasks();
+    triggerFeedback(
+      'Lista de objetivos limpa para visualização do estado vazio.'
+    );
   };
 
   return (
@@ -711,23 +414,16 @@ export default function App() {
                   setIsGoalModalOpen(true);
                 }}
                 onDeleteGoal={(g) => setGoalToDelete(g)}
-                onChangeGoalStatus={handleChangeGoalStatus}
                 onOpenNewTaskForGoal={(goalId) => {
                   setEditingTask(null);
                   setDefaultGoalIdForNewTask(goalId);
                   setIsTaskModalOpen(true);
                 }}
-                onUpdateTaskStatus={handleUpdateTaskStatus}
                 onEditTask={(t) => {
                   setEditingTask(t);
                   setDefaultGoalIdForNewTask(null);
                   setIsTaskModalOpen(true);
                 }}
-                onDeleteTask={handleDeleteTask}
-                onAddSubtask={handleAddSubtask}
-                onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
-                onEditSubtask={handleEditSubtask}
-                onDeleteSubtask={handleDeleteSubtask}
               />
             ) : (
               <section
@@ -1136,17 +832,11 @@ export default function App() {
                         task={task}
                         linkedGoal={linkedGoal}
                         hideGoalName={taskFilterMode === 'objetivo'}
-                        onUpdateTaskStatus={handleUpdateTaskStatus}
                         onEditTask={(t) => {
                           setEditingTask(t);
                           setDefaultGoalIdForNewTask(null);
                           setIsTaskModalOpen(true);
                         }}
-                        onDeleteTask={handleDeleteTask}
-                        onAddSubtask={handleAddSubtask}
-                        onUpdateSubtaskStatus={handleUpdateSubtaskStatus}
-                        onEditSubtask={handleEditSubtask}
-                        onDeleteSubtask={handleDeleteSubtask}
                       />
                     </li>
                   );
@@ -1242,7 +932,7 @@ export default function App() {
           setIsGoalModalOpen(false);
           setEditingGoal(null);
         }}
-        onSave={handleSaveGoal}
+        onSave={saveGoal}
       />
 
       <TaskFormModal
@@ -1255,14 +945,26 @@ export default function App() {
           setEditingTask(null);
           setDefaultGoalIdForNewTask(null);
         }}
-        onSave={handleSaveTask}
+        onSave={saveTask}
       />
 
       <DeleteGoalModal
         goal={goalToDelete}
         onClose={() => setGoalToDelete(null)}
-        onConfirmDelete={handleConfirmDeleteGoal}
+        onConfirmDelete={(goalId, deleteLinkedTasks) => deleteGoal(goalId, deleteLinkedTasks)}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <NotificationProvider>
+      <TaskProvider>
+        <GoalProvider>
+          <AppContent />
+        </GoalProvider>
+      </TaskProvider>
+    </NotificationProvider>
   );
 }

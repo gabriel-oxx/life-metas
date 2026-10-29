@@ -21,6 +21,7 @@ import {
 } from '../models/types';
 import { formatDateBR, formatUnitValue } from '../utils/treeUtils';
 import { TaskItem } from './TaskItem';
+import { useGoals } from '../contexts/GoalContext';
 
 interface GoalDetailPanelProps {
   goal: GoalWithProgress;
@@ -28,28 +29,28 @@ interface GoalDetailPanelProps {
   onBack: () => void;
   onEditGoal: (goal: GoalWithProgress) => void;
   onDeleteGoal: (goal: GoalWithProgress) => void;
-  onChangeGoalStatus: (goalId: string, newStatus: GoalStatus) => void;
+  onChangeGoalStatus?: (goalId: string, newStatus: GoalStatus) => void;
   onOpenNewTaskForGoal: (goalId: string) => void;
-  onUpdateTaskStatus: (taskId: string, newStatus: TaskStatus) => void;
-  onEditTask: (task: Task) => void;
-  onDeleteTask: (taskId: string) => void;
-  onAddSubtask: (
+  onUpdateTaskStatus?: (taskId: string, newStatus: TaskStatus) => void;
+  onEditTask?: (task: Task) => void;
+  onDeleteTask?: (taskId: string) => void;
+  onAddSubtask?: (
     taskId: string,
     parentId: string,
     title: string,
     dueDate: string | null
   ) => void;
-  onUpdateSubtaskStatus: (
+  onUpdateSubtaskStatus?: (
     taskId: string,
     subtaskId: string,
     newStatus: TaskStatus
   ) => void;
-  onEditSubtask: (
+  onEditSubtask?: (
     taskId: string,
     subtaskId: string,
     updates: { title: string; dueDate: string | null; status: TaskStatus }
   ) => void;
-  onDeleteSubtask: (taskId: string, subtaskId: string) => void;
+  onDeleteSubtask?: (taskId: string, subtaskId: string) => void;
 }
 
 export const GoalDetailPanel: React.FC<GoalDetailPanelProps> = ({
@@ -58,7 +59,7 @@ export const GoalDetailPanel: React.FC<GoalDetailPanelProps> = ({
   onBack,
   onEditGoal,
   onDeleteGoal,
-  onChangeGoalStatus,
+  onChangeGoalStatus: propOnChangeGoalStatus,
   onOpenNewTaskForGoal,
   onUpdateTaskStatus,
   onEditTask,
@@ -68,6 +69,8 @@ export const GoalDetailPanel: React.FC<GoalDetailPanelProps> = ({
   onEditSubtask,
   onDeleteSubtask,
 }) => {
+  const { changeGoalStatus } = useGoals();
+  const handleChangeGoalStatus = propOnChangeGoalStatus || changeGoalStatus;
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatus | 'todos'>(
     'todos'
   );
@@ -206,7 +209,7 @@ export const GoalDetailPanel: React.FC<GoalDetailPanelProps> = ({
                 id={`detail-status-select-${goal.id}`}
                 value={goal.status}
                 onChange={(e) =>
-                  onChangeGoalStatus(goal.id, e.target.value as GoalStatus)
+                  handleChangeGoalStatus(goal.id, e.target.value as GoalStatus)
                 }
                 className="text-xs font-medium bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:ring-2 focus:ring-emerald-700"
               >
@@ -384,13 +387,7 @@ export const GoalDetailPanel: React.FC<GoalDetailPanelProps> = ({
                   task={task}
                   linkedGoal={goal}
                   hideGoalName={true}
-                  onUpdateTaskStatus={onUpdateTaskStatus}
                   onEditTask={onEditTask}
-                  onDeleteTask={onDeleteTask}
-                  onAddSubtask={onAddSubtask}
-                  onUpdateSubtaskStatus={onUpdateSubtaskStatus}
-                  onEditSubtask={onEditSubtask}
-                  onDeleteSubtask={onDeleteSubtask}
                 />
               </li>
             ))}

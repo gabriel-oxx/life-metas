@@ -1,4 +1,4 @@
-import { GoalWithProgress, Task } from '../models/types';
+import { Goal, GoalWithProgress, Task } from '../models/types';
 import { countSubtasksRecursive } from './treeUtils';
 
 export const LEVEL_TITLES = [
@@ -123,3 +123,33 @@ export function calculateTotalXp(
       ...levelInfo,
     };
   }
+
+/**
+ * Calcula reativamente o progresso de cada objetivo a partir das tarefas a ele vinculadas.
+ */
+export function computeGoalsWithProgress(
+  goals: Goal[],
+  tasks: Task[]
+): GoalWithProgress[] {
+  return goals.map((goal) => {
+    const linked = tasks.filter((t) => t.goalId === goal.id);
+    const completed = linked.filter((t) => t.status === 'concluida');
+    const currentValue = completed.reduce(
+      (acc, t) => acc + (Number(t.defaultValue) || 0),
+      0
+    );
+    const rawPercent =
+      goal.targetValue > 0
+        ? Math.round((currentValue / goal.targetValue) * 100)
+        : 0;
+    const progressPercent = Math.min(100, Math.max(0, rawPercent));
+
+    return {
+      ...goal,
+      currentValue,
+      progressPercent,
+      linkedTasksCount: linked.length,
+      completedTasksCount: completed.length,
+    };
+  });
+}

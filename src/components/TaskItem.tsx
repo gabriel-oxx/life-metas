@@ -22,45 +22,68 @@ import {
   formatUnitValue,
 } from '../utils/treeUtils';
 import { SubtaskTree } from './SubtaskTree';
+import { useTasks } from '../contexts/TaskContext';
 
 interface TaskItemProps {
   task: Task;
   linkedGoal: Goal | null;
   hideGoalName?: boolean;
-  onUpdateTaskStatus: (taskId: string, newStatus: TaskStatus) => void;
-  onEditTask: (task: Task) => void;
-  onDeleteTask: (taskId: string) => void;
-  onAddSubtask: (
+  onUpdateTaskStatus?: (taskId: string, newStatus: TaskStatus) => void;
+  onEditTask?: (task: Task) => void;
+  onDeleteTask?: (taskId: string) => void;
+  onAddSubtask?: (
     taskId: string,
     parentId: string,
     title: string,
     dueDate: string | null
   ) => void;
-  onUpdateSubtaskStatus: (
+  onUpdateSubtaskStatus?: (
     taskId: string,
     subtaskId: string,
     newStatus: TaskStatus
   ) => void;
-  onEditSubtask: (
+  onEditSubtask?: (
     taskId: string,
     subtaskId: string,
     updates: { title: string; dueDate: string | null; status: TaskStatus }
   ) => void;
-  onDeleteSubtask: (taskId: string, subtaskId: string) => void;
+  onDeleteSubtask?: (taskId: string, subtaskId: string) => void;
 }
 
 export const TaskItem: React.FC<TaskItemProps> = ({
   task,
   linkedGoal,
   hideGoalName = false,
-  onUpdateTaskStatus,
+  onUpdateTaskStatus: propOnUpdateTaskStatus,
   onEditTask,
-  onDeleteTask,
-  onAddSubtask,
-  onUpdateSubtaskStatus,
-  onEditSubtask,
-  onDeleteSubtask,
+  onDeleteTask: propOnDeleteTask,
+  onAddSubtask: propOnAddSubtask,
+  onUpdateSubtaskStatus: propOnUpdateSubtaskStatus,
+  onEditSubtask: propOnEditSubtask,
+  onDeleteSubtask: propOnDeleteSubtask,
 }) => {
+  const tasksContext = useTasks();
+
+  const handleUpdateTaskStatus = (newStatus: TaskStatus) => {
+    if (propOnUpdateTaskStatus) {
+      propOnUpdateTaskStatus(task.id, newStatus);
+    } else {
+      tasksContext.updateTaskStatus(task.id, newStatus, linkedGoal?.title);
+    }
+  };
+
+  const handleDeleteTask = () => {
+    if (propOnDeleteTask) {
+      propOnDeleteTask(task.id);
+    } else {
+      tasksContext.deleteTask(task.id);
+    }
+  };
+
+  const handleAddSubtask = propOnAddSubtask || tasksContext.addSubtask;
+  const handleUpdateSubtaskStatus = propOnUpdateSubtaskStatus || tasksContext.updateSubtaskStatus;
+  const handleEditSubtask = propOnEditSubtask || tasksContext.editSubtask;
+  const handleDeleteSubtask = propOnDeleteSubtask || tasksContext.deleteSubtask;
   // Por padrão fechada: exibe apenas checkbox, título da tarefa e número de subtarefas
   const [isOpen, setIsOpen] = useState(false);
   const [isAddingRootSubtask, setIsAddingRootSubtask] = useState(false);
@@ -84,7 +107,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     e.preventDefault();
     const trimmed = subtaskTitle.trim();
     if (!trimmed) return;
-    onAddSubtask(
+    handleAddSubtask(
       task.id,
       task.id,
       trimmed,
@@ -96,7 +119,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
   const toggleMainCheckbox = () => {
     const nextStatus: TaskStatus = isCompleted ? 'nao_iniciada' : 'concluida';
-    onUpdateTaskStatus(task.id, nextStatus);
+    handleUpdateTaskStatus(nextStatus);
   };
 
   const taskDetailPanelId = `task-detail-panel-${task.id}`;
@@ -252,7 +275,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                 id={taskStatusSelectId}
                 value={task.status}
                 onChange={(e) =>
-                  onUpdateTaskStatus(task.id, e.target.value as TaskStatus)
+                  handleUpdateTaskStatus(e.target.value as TaskStatus)
                 }
                 className="text-xs bg-white border border-stone-200 hover:border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-800 focus:outline-none focus:ring-2 focus:ring-emerald-700"
               >
@@ -275,7 +298,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             <button
               type="button"
-              onClick={() => onEditTask(task)}
+              onClick={() => onEditTask?.(task)}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-stone-700 bg-white border border-stone-200 hover:bg-stone-100 rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
             >
               <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
@@ -284,7 +307,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             <button
               type="button"
-              onClick={() => onDeleteTask(task.id)}
+              onClick={handleDeleteTask}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
@@ -362,10 +385,6 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               parentDueDate={task.dueDate}
               level={0}
               parentTitle={task.title}
-              onAddSubtask={onAddSubtask}
-              onUpdateSubtaskStatus={onUpdateSubtaskStatus}
-              onEditSubtask={onEditSubtask}
-              onDeleteSubtask={onDeleteSubtask}
             />
           )}
         </div>

@@ -15,6 +15,7 @@ import {
   formatDateBR,
   formatDateTimeBR,
 } from '../utils/treeUtils';
+import { useTasks } from '../contexts/TaskContext';
 
 interface SubtaskTreeProps {
   taskId: string;
@@ -22,23 +23,23 @@ interface SubtaskTreeProps {
   parentDueDate: string | null;
   level?: number;
   parentTitle?: string;
-  onAddSubtask: (
+  onAddSubtask?: (
     taskId: string,
     parentId: string,
     title: string,
     dueDate: string | null
   ) => void;
-  onUpdateSubtaskStatus: (
+  onUpdateSubtaskStatus?: (
     taskId: string,
     subtaskId: string,
     newStatus: TaskStatus
   ) => void;
-  onEditSubtask: (
+  onEditSubtask?: (
     taskId: string,
     subtaskId: string,
     updates: { title: string; dueDate: string | null; status: TaskStatus }
   ) => void;
-  onDeleteSubtask: (taskId: string, subtaskId: string) => void;
+  onDeleteSubtask?: (taskId: string, subtaskId: string) => void;
 }
 
 export const SubtaskTree: React.FC<SubtaskTreeProps> = ({
@@ -47,11 +48,16 @@ export const SubtaskTree: React.FC<SubtaskTreeProps> = ({
   parentDueDate,
   level = 0,
   parentTitle,
-  onAddSubtask,
-  onUpdateSubtaskStatus,
-  onEditSubtask,
-  onDeleteSubtask,
+  onAddSubtask: propOnAddSubtask,
+  onUpdateSubtaskStatus: propOnUpdateSubtaskStatus,
+  onEditSubtask: propOnEditSubtask,
+  onDeleteSubtask: propOnDeleteSubtask,
 }) => {
+  const tasksContext = useTasks();
+  const onAddSubtask = propOnAddSubtask || tasksContext.addSubtask;
+  const onUpdateSubtaskStatus = propOnUpdateSubtaskStatus || tasksContext.updateSubtaskStatus;
+  const onEditSubtask = propOnEditSubtask || tasksContext.editSubtask;
+  const onDeleteSubtask = propOnDeleteSubtask || tasksContext.deleteSubtask;
   if (!subtasks || subtasks.length === 0) return null;
 
   return (
