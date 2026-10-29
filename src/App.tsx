@@ -215,10 +215,11 @@ export default function App() {
 
     const totalXp =
       completedSubtasks * 15 + completedTasks * 50 + completedGoals * 200;
-    const level = Math.floor(totalXp / 250) + 1;
+    const level = Math.floor(totalXp / 250);
     const xpInCurrentLevel = totalXp % 250;
 
     const levelTitles = [
+      'Aprendiz Esforçado',
       'Iniciante Intencional',
       'Planejador Consistente',
       'Arquiteto de Hábitos',
@@ -226,7 +227,7 @@ export default function App() {
       'Mestre da Realização',
     ];
     const levelTitle =
-      levelTitles[Math.min(level - 1, levelTitles.length - 1)];
+      levelTitles[Math.min(level, levelTitles.length - 1)];
 
     return {
       totalXp,
@@ -589,11 +590,10 @@ export default function App() {
                 setActiveView('objetivos');
                 setSelectedGoalId(null);
               }}
-              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                activeView === 'objetivos'
-                  ? 'bg-white text-stone-900 shadow-xs'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
+              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${activeView === 'objetivos'
+                ? 'bg-white text-stone-900 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
+                }`}
             >
               Objetivos ({goals.length})
             </button>
@@ -605,11 +605,10 @@ export default function App() {
                 setActiveView('tarefas');
                 setSelectedGoalId(null);
               }}
-              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                activeView === 'tarefas'
-                  ? 'bg-white text-stone-900 shadow-xs'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
+              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${activeView === 'tarefas'
+                ? 'bg-white text-stone-900 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
+                }`}
             >
               Tarefas ({tasks.length})
             </button>
@@ -621,11 +620,10 @@ export default function App() {
                 setActiveView('metodo');
                 setSelectedGoalId(null);
               }}
-              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                activeView === 'metodo'
-                  ? 'bg-white text-stone-900 shadow-xs'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
+              className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${activeView === 'metodo'
+                ? 'bg-white text-stone-900 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
+                }`}
             >
               Método
             </button>
@@ -676,93 +674,68 @@ export default function App() {
         {/* Resumo compacto de Gamificação visível quando não está dentro do painel de detalhe de um objetivo */}
         {!selectedGoal && (
           <section
-            aria-label="Resumo de consistência e pontuação"
-            className="bg-white border border-stone-200/90 rounded-2xl p-5 sm:p-6"
+            aria-labelledby="titulo-consistencia"
+            className="bg-white border border-stone-200/90 rounded-2xl p-6"
           >
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-              <div className="lg:col-span-7 space-y-1.5">
-                <p className="text-xs font-medium text-emerald-800">
-                  Psicologia Comportamental Aplicada · Gestão Progressiva
-                </p>
-                <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
-                  Avance em objetivos complexos através de micro-etapas visíveis.
-                </h1>
-                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed max-w-2xl">
-                  Selecione qualquer objetivo ou tarefa (com clique ou tecla
-                  Enter) para abrir seus controles internos sem poluição visual.
-                </p>
-              </div>
+            {/* 1. Nível de Consistência */}
+            <h2
+              id="titulo-consistencia"
+              className="text-base sm:text-lg font-bold text-stone-900"
+            >
+              Nível de Consistência: {gamificationStats.level} — {gamificationStats.levelTitle}
+            </h2>
 
-              <div className="lg:col-span-5 bg-stone-50/90 border border-stone-200/80 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-xs text-stone-500 block">
-                      Nível de Consistência {gamificationStats.level}
-                    </span>
-                    <span className="text-sm sm:text-base font-semibold text-stone-900">
-                      {gamificationStats.levelTitle}
-                    </span>
-                  </div>
-                  <div className="text-right font-mono-tabular">
-                    <span className="text-base sm:text-lg font-bold text-emerald-700">
-                      {gamificationStats.totalXp} XP
-                    </span>
-                    <span className="text-xs text-stone-500 block">
-                      {gamificationStats.xpInCurrentLevel}/
-                      {gamificationStats.xpToNextLevel} XP p/ próximo nível
-                    </span>
-                  </div>
-                </div>
+            {/* 2. XP e Barra de Progresso */}
+            <div className="mt-4 space-y-2.5">
+              <p className="text-2xl font-bold font-mono-tabular text-emerald-700">
+                {gamificationStats.totalXp} XP
+              </p>
 
+              {/* Barra de Progresso com leitura de porcentagem exata */}
+              <div
+                role="progressbar"
+                aria-label={`Progresso para o nível ${gamificationStats.level + 1}`}
+                aria-valuenow={Math.round(
+                  (gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel) * 100
+                )}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuetext={`${Math.round(
+                  (gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel) * 100
+                )}%`}
+                className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden"
+              >
                 <div
-                  className="w-full h-2 bg-stone-200 rounded-full overflow-hidden"
-                  role="progressbar"
-                  aria-label="Progresso de experiência para o próximo nível"
-                  aria-valuenow={gamificationStats.xpInCurrentLevel}
-                  aria-valuemin={0}
-                  aria-valuemax={gamificationStats.xpToNextLevel}
-                  aria-valuetext={`${gamificationStats.xpInCurrentLevel} de ${
-                    gamificationStats.xpToNextLevel
-                  } XP para alcançar o nível ${gamificationStats.level + 1}`}
-                >
-                  <div
-                    className="h-full bg-emerald-600 rounded-full transition-transform duration-200 origin-left"
-                    style={{
-                      width: '100%',
-                      transform: `scaleX(${
-                        gamificationStats.xpInCurrentLevel /
-                        gamificationStats.xpToNextLevel
-                      })`,
-                    }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-stone-200/70 text-xs">
-                  <div>
-                    <span className="text-stone-500 block">Metas ativas</span>
-                    <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
-                      {gamificationStats.activeGoalsCount}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-stone-500 block">
-                      Tarefas feitas
-                    </span>
-                    <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
-                      {gamificationStats.completedTasks}/{tasks.length}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-stone-500 block">
-                      Subtarefas feitas
-                    </span>
-                    <span className="font-mono-tabular font-semibold text-stone-900 text-sm">
-                      {gamificationStats.completedSubtasks}/
-                      {gamificationStats.totalSubtasks}
-                    </span>
-                  </div>
-                </div>
+                  className="h-full bg-emerald-600 rounded-full transition-transform duration-200 origin-left"
+                  style={{
+                    width: '100%',
+                    transform: `scaleX(${
+                      gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel
+                    })`,
+                  }}
+                />
               </div>
+
+              {/* Próximo passo em linguagem natural */}
+              <p className="text-xs sm:text-sm text-stone-600">
+                Ganhe {gamificationStats.xpToNextLevel - gamificationStats.xpInCurrentLevel} XP para alcançar o nível {gamificationStats.level + 1}
+              </p>
+            </div>
+
+            {/* 3. Indicadores de Metas e Tarefas */}
+            <div className="mt-5 pt-4 border-t border-stone-100 flex flex-wrap gap-6 text-xs sm:text-sm text-stone-700">
+              <p>
+                <span className="text-stone-500">Metas ativas:</span>{' '}
+                <strong className="font-semibold text-stone-900">
+                  {gamificationStats.activeGoalsCount}
+                </strong>
+              </p>
+              <p>
+                <span className="text-stone-500">Tarefas feitas:</span>{' '}
+                <strong className="font-semibold text-stone-900">
+                  {gamificationStats.completedTasks}
+                </strong>
+              </p>
             </div>
           </section>
         )}
@@ -862,11 +835,10 @@ export default function App() {
                         type="button"
                         aria-pressed={goalStatusFilter === st}
                         onClick={() => setGoalStatusFilter(st)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                          goalStatusFilter === st
-                            ? 'bg-white text-stone-900 shadow-xs'
-                            : 'text-stone-600 hover:text-stone-900'
-                        }`}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${goalStatusFilter === st
+                          ? 'bg-white text-stone-900 shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                          }`}
                       >
                         {st === 'todos'
                           ? 'Todos os status'
@@ -1040,11 +1012,10 @@ export default function App() {
                       type="button"
                       aria-pressed={taskFilterMode === 'objetivo'}
                       onClick={() => setTaskFilterMode('objetivo')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                        taskFilterMode === 'objetivo'
-                          ? 'bg-white text-stone-900 shadow-xs'
-                          : 'text-stone-600 hover:text-stone-900'
-                      }`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${taskFilterMode === 'objetivo'
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                        }`}
                     >
                       <Target className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>Exibição por objetivo</span>
@@ -1054,11 +1025,10 @@ export default function App() {
                       type="button"
                       aria-pressed={taskFilterMode === 'data'}
                       onClick={() => setTaskFilterMode('data')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                        taskFilterMode === 'data'
-                          ? 'bg-white text-stone-900 shadow-xs'
-                          : 'text-stone-600 hover:text-stone-900'
-                      }`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${taskFilterMode === 'data'
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                        }`}
                     >
                       <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>Exibição por data</span>
@@ -1085,11 +1055,10 @@ export default function App() {
                       type="button"
                       aria-pressed={taskStatusFilter === st}
                       onClick={() => setTaskStatusFilter(st)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${
-                        taskStatusFilter === st
-                          ? 'bg-white text-stone-900 shadow-xs'
-                          : 'text-stone-600 hover:text-stone-900'
-                      }`}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ${taskStatusFilter === st
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                        }`}
                     >
                       {st === 'todos'
                         ? 'Todos os status'

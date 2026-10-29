@@ -6,9 +6,8 @@ const FOCUSABLE_SELECTOR =
 /**
  * Hook de acessibilidade para modais:
  * 1. Salva o elemento que tinha foco antes de abrir e restaura ao fechar.
- * 2. Transfere o foco imediatamente para dentro do modal ao abrir (para leitura correta por leitores de tela).
- * 3. Fecha o modal ao pressionar a tecla Escape.
- * 4. Mantém o foco preso dentro do modal (Focus Trap) ao navegar com Tab / Shift+Tab.
+ * 2. Fecha o modal ao pressionar a tecla Escape.
+ * 3. Mantém o foco preso dentro do modal (Focus Trap) ao navegar com Tab / Shift+Tab.
  */
 export function useModalA11y(isOpen: boolean, onClose: () => void) {
   const modalRef = useRef<HTMLDivElement | null>(null);
@@ -18,28 +17,6 @@ export function useModalA11y(isOpen: boolean, onClose: () => void) {
     if (!isOpen) return;
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
-
-    // Transfere o foco imediatamente para o modal assim que ele renderizar
-    const timer = setTimeout(() => {
-      if (!modalRef.current) return;
-
-      const autoFocusEl = modalRef.current.querySelector<HTMLElement>(
-        '[autofocus], [data-autofocus]'
-      );
-      if (autoFocusEl) {
-        autoFocusEl.focus();
-        return;
-      }
-
-      const focusableElements = Array.from(
-        modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      );
-      if (focusableElements.length > 0) {
-        focusableElements[0].focus();
-      } else {
-        modalRef.current.focus();
-      }
-    }, 20);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -56,13 +33,6 @@ export function useModalA11y(isOpen: boolean, onClose: () => void) {
 
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
-
-        // Se o foco por algum motivo estiver fora do modal, traz de volta imediatamente
-        if (!modalRef.current.contains(document.activeElement)) {
-          e.preventDefault();
-          firstElement.focus();
-          return;
-        }
 
         if (e.shiftKey) {
           if (document.activeElement === firstElement) {
@@ -81,13 +51,8 @@ export function useModalA11y(isOpen: boolean, onClose: () => void) {
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      clearTimeout(timer);
       document.removeEventListener('keydown', handleKeyDown);
-      if (
-        previousFocusRef.current &&
-        typeof previousFocusRef.current.focus === 'function' &&
-        document.contains(previousFocusRef.current)
-      ) {
+      if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
         setTimeout(() => {
           previousFocusRef.current?.focus();
         }, 0);
@@ -97,3 +62,4 @@ export function useModalA11y(isOpen: boolean, onClose: () => void) {
 
   return modalRef;
 }
+

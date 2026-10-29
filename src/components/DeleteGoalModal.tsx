@@ -22,19 +22,15 @@ export const DeleteGoalModal: React.FC<DeleteGoalModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 backdrop-blur-[2px] p-4 overflow-y-auto"
-      role="alertdialog"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 backdrop-blur-[2px] p-4"
+      role="dialog"
       aria-modal="true"
       aria-labelledby="delete-goal-title"
       aria-describedby="delete-goal-desc"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div
         ref={modalRef}
-        tabIndex={-1}
-        className="bg-white border border-stone-200 rounded-2xl w-full max-w-md overflow-hidden shadow-xl p-6 space-y-4 focus:outline-none"
+        className="bg-white border border-stone-200 rounded-2xl w-full max-w-md overflow-hidden shadow-xl p-6 space-y-4"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5 text-red-700">
@@ -53,7 +49,7 @@ export const DeleteGoalModal: React.FC<DeleteGoalModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
-            aria-label="Fechar janela de confirmação de exclusão"
+            aria-label="Fechar janela de confirmação"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -106,7 +102,6 @@ export const DeleteGoalModal: React.FC<DeleteGoalModalProps> = ({
         <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
           <button
             type="button"
-            autoFocus
             onClick={onClose}
             className="px-4 py-2 text-xs font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-600"
           >
