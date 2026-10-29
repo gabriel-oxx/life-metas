@@ -23,8 +23,8 @@ import {
   TASK_STATUS_LABELS,
 } from './models/types';
 import { INITIAL_GOALS, INITIAL_TASKS } from './data/initialData';
+import { calculateGamificationStats } from './utils/gamificationUtils';
 import {
-  countSubtasksRecursive,
   deleteSubtaskFromTree,
   editSubtaskInTree,
   insertSubtaskInTree,
@@ -198,49 +198,8 @@ export default function App() {
 
   // Pontuação Gamificada (XP Comportamental)
   const gamificationStats = useMemo(() => {
-    let completedTasks = 0;
-    let totalSubtasks = 0;
-    let completedSubtasks = 0;
-
-    for (const task of tasks) {
-      if (task.status === 'concluida') completedTasks += 1;
-      const subCounts = countSubtasksRecursive(task.subtasks);
-      totalSubtasks += subCounts.total;
-      completedSubtasks += subCounts.completed;
-    }
-
-    const completedGoals = goalsWithProgress.filter(
-      (g) => g.status === 'concluido' || g.progressPercent >= 100
-    ).length;
-
-    const totalXp =
-      completedSubtasks * 15 + completedTasks * 50 + completedGoals * 200;
-    const level = Math.floor(totalXp / 250);
-    const xpInCurrentLevel = totalXp % 250;
-
-    const levelTitles = [
-      'Aprendiz Esforçado',
-      'Iniciante Intencional',
-      'Planejador Consistente',
-      'Arquiteto de Hábitos',
-      'Estrategista Focado',
-      'Mestre da Realização',
-    ];
-    const levelTitle =
-      levelTitles[Math.min(level, levelTitles.length - 1)];
-
-    return {
-      totalXp,
-      level,
-      levelTitle,
-      xpInCurrentLevel,
-      xpToNextLevel: 250,
-      completedTasks,
-      completedSubtasks,
-      totalSubtasks,
-      activeGoalsCount: goals.filter((g) => g.status === 'ativo').length,
-    };
-  }, [tasks, goals, goalsWithProgress]);
+    return calculateGamificationStats(tasks, goalsWithProgress);
+  }, [tasks, goalsWithProgress]);
 
   // Objetivos filtrados
   const filteredGoals = useMemo(() => {
@@ -709,9 +668,8 @@ export default function App() {
                   className="h-full bg-emerald-600 rounded-full transition-transform duration-200 origin-left"
                   style={{
                     width: '100%',
-                    transform: `scaleX(${
-                      gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel
-                    })`,
+                    transform: `scaleX(${gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel
+                      })`,
                   }}
                 />
               </div>
@@ -1144,7 +1102,7 @@ export default function App() {
                 <p className="text-xs text-stone-500 max-w-md mx-auto">
                   {taskFilterMode === 'objetivo'
                     ? 'Adicione uma nova tarefa para este objetivo ou selecione outro objetivo acima.'
-                    : `Não há tarefas com vencimento para "${TASK_DATE_FILTER_LABELS[selectedDateFilter]}".`}
+                    : `Não há tarefas com vencimento para ${TASK_DATE_FILTER_LABELS[selectedDateFilter]}.`}
                 </p>
                 <button
                   type="button"
