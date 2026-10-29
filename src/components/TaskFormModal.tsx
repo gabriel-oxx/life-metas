@@ -126,6 +126,9 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       aria-modal="true"
       aria-labelledby="task-modal-title"
       aria-describedby="task-modal-desc"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={modalRef}

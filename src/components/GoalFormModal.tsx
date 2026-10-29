@@ -114,6 +114,9 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
       aria-modal="true"
       aria-labelledby="goal-modal-title"
       aria-describedby="goal-modal-desc"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={modalRef}

@@ -536,6 +536,7 @@ export default function App() {
   };
 
   const handleBackFromGoalDetail = () => {
+    setGoalToDelete(null);
     const previousId = selectedGoalId;
     setSelectedGoalId(null);
     if (previousId) {
