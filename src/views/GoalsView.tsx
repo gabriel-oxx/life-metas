@@ -152,32 +152,36 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
             {/* Barra de Progresso com leitura de porcentagem exata */}
             <div
               role="progressbar"
-              aria-label={`Progresso para o nível ${gamificationStats.level + 1}`}
-              aria-valuenow={Math.round(
-                (gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel) * 100
-              )}
+              aria-label={
+                gamificationStats.isMaxLevel
+                  ? 'Nível máximo de consistência alcançado'
+                  : `Progresso para o nível ${gamificationStats.level + 1}`
+              }
+              aria-valuenow={gamificationStats.progressPercent}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuetext={`${Math.round(
-                (gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel) * 100
-              )}%`}
+              aria-valuetext={`${gamificationStats.progressPercent}%`}
               className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden"
             >
               <div
                 className="h-full bg-emerald-600 rounded-full transition-transform duration-200 origin-left"
                 style={{
                   width: '100%',
-                  transform: `scaleX(${
-                    gamificationStats.xpInCurrentLevel / gamificationStats.xpToNextLevel
-                  })`,
+                  transform: `scaleX(${gamificationStats.progressPercent / 100})`,
                 }}
               />
             </div>
 
             {/* Próximo passo em linguagem natural */}
-            <p className="text-xs sm:text-sm text-stone-600">
-              Ganhe {gamificationStats.xpToNextLevel - gamificationStats.xpInCurrentLevel} XP para alcançar o nível {gamificationStats.level + 1}
-            </p>
+            {gamificationStats.isMaxLevel ? (
+              <p className="text-xs sm:text-sm font-semibold text-emerald-800">
+                🏆 Nível máximo de consistência alcançado! Parabéns pela sua dedicação.
+              </p>
+            ) : (
+              <p className="text-xs sm:text-sm text-stone-600">
+                Ganhe {gamificationStats.xpToNextLevel - gamificationStats.xpInCurrentLevel} XP para alcançar o nível {gamificationStats.level + 1}
+              </p>
+            )}
           </div>
 
           {/* 3. Indicadores de Metas e Tarefas */}
